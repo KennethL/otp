@@ -135,40 +135,12 @@ render_glyph(W, {Hi,H}, X0, Y0,Xm, Bitmask , LSs) ->
     N = ((W+7) div 8),
     O = N*Hi,
     <<_:O/binary, Submask/binary>> = Bitmask,
-%    LS = render_glyph_horizontal(
-%	{0, W - 1},   % loop state
-%	Submask,         % line glyph bitmask
-%	W - 1,           % Width
-%	[]),             % Linespans
      LS = render_glyph_horizontal(
 	Submask,         % line glyph bitmask
 	{down, W - 1},   % loop state
 	W - 1,           % Width
 	[]),             % Linespans
     render_glyph(W,{Hi+1,H},X0,Y0,Xm, Bitmask, [LS|LSs]).
-
-%render_glyph_horizontal({Pr, Px}, <<Cr:1, _/bits>>, 0, Spans)  ->
-%    case {Pr,Cr} of
-%	{1, 1  } -> % closure of interval since its last
-%	    [{0, Px}|Spans];
-%	{1, 0} -> % closure of interval
-%	    [{1, Px}|Spans];
-%	{0, 1} -> % beginning of interval
-%	    [{0,  0}|Spans];
-%	{0, 0} -> % no change in interval
-%	    Spans
-%    end;
-%render_glyph_horizontal({Pr, Px}, <<Cr:1, R/bits>>, Cx, Spans) ->
-%    case {Pr,Cr} of
-%	{1, 1} -> % no change in interval
-%	    render_glyph_horizontal({Cr, Px}, R, Cx - 1, Spans);
-%	{1, 0} -> % closure of interval
-%	    render_glyph_horizontal({Cr, Cx}, R, Cx - 1, [{Cx+1,Px}|Spans]);
-%	{0, 1} -> % beginning of interval
-%	    render_glyph_horizontal({Cr, Cx}, R, Cx - 1, Spans);
-%	{0, 0} -> % no change in interval
-%	    render_glyph_horizontal({Cr, Px}, R, Cx - 1, Spans)
-%    end.  
 
 render_glyph_horizontal(Value, {Pr, Px}, 0, Spans) ->
     Cr = bit_spin(Value, 0),

@@ -35,7 +35,7 @@ binary(Image, Type) ->
     parallel_binary(precompile(Image),Type).
 
 parallel_binary(Image = #image{ height = Height },Type) ->
-    case min(erlang:system_info(schedulers), Height) of
+    case erlang:min(erlang:system_info(schedulers), Height) of
         1 ->
 	    % if the height or the number of schedulers is 1
 	    % do the scanlines in this process.
@@ -229,7 +229,7 @@ trim_object_line_data([{_, Xl, _, _}|OLs], Width, Out) when Xl > Width ->
 trim_object_line_data([{_, _, Xr, _}|OLs], Width, Out) when Xr < 0 ->
     trim_object_line_data(OLs, Width, Out);
 trim_object_line_data([{Z, Xl, Xr, C}|OLs], Width, Out) ->
-    trim_object_line_data(OLs, Width, [{Z, max(0,Xl), min(Xr,Width), C}|Out]).
+    trim_object_line_data(OLs, Width, [{Z, erlang:max(0,Xl), erlang:min(Xr,Width), C}|Out]).
 
 % object_line_data
 % In:
@@ -652,12 +652,4 @@ eps_header(W,H) ->
 
 eps_footer() -> 
     "%%EOF\n".
-
-%% Other Aux
-min(A,B) when A < B -> A;
-min(_,B) -> B.
-
-max(A,B) when A > B -> A;
-max(_,B) -> B.
-
 
