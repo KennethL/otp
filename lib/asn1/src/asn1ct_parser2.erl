@@ -74,8 +74,8 @@ parse_ModuleDefinition([{typereference,L1,ModuleIdentifier}|Rest0]) ->
     {ExtensionDefault,Rest3} = 
 	case Rest2 of
 	    [{'EXTENSIBILITY',_L5}, {'IMPLIED',_L6}|Rest21] -> 
-		{'IMPLIED',Rest21};
-	    _  -> {false,Rest2}
+		put(extensiondefault,'IMPLIED'),{'IMPLIED',Rest21};
+	    _  -> {undefined,Rest2}
 	end,
     case Rest3 of
 	[{'::=',_L7}, {'BEGIN',_L8}|Rest4] ->
@@ -511,6 +511,12 @@ parse_BuiltinType([{'SEQUENCE',_},{'{',_}|Rest]) ->
 	    throw({asn1_error,{get_line(hd(Rest2)),get(asn1_module),
 			       [got,get_token(hd(Rest2)),expected,'}']}})
     end;
+
+parse_BuiltinType([{'SEQUENCE',_},{'OF',_},{identifier,_,_}|Rest]) ->
+%% TODO: take care of the identifier for something useful 
+    {Type,Rest2} = parse_Type(Rest),
+    {#type{def={'SEQUENCE OF',Type}},Rest2};
+
 parse_BuiltinType([{'SEQUENCE',_},{'OF',_}|Rest]) ->
     {Type,Rest2} = parse_Type(Rest),
     {#type{def={'SEQUENCE OF',Type}},Rest2};
@@ -538,6 +544,11 @@ parse_BuiltinType([{'SET',_},{'{',_}|Rest]) ->
 	    throw({asn1_error,{get_line(hd(Rest2)),get(asn1_module),
 			       [got,get_token(hd(Rest2)),expected,'}']}})
     end;
+parse_BuiltinType([{'SET',_},{'OF',_},{identifier,_,_}|Rest]) ->
+%%TODO: take care of the identifier for something useful  
+    {Type,Rest2} = parse_Type(Rest),
+    {#type{def={'SET OF',Type}},Rest2};
+
 parse_BuiltinType([{'SET',_},{'OF',_}|Rest]) ->
     {Type,Rest2} = parse_Type(Rest),
     {#type{def={'SET OF',Type}},Rest2};
@@ -563,48 +574,74 @@ parse_BuiltinType(Tokens) ->
 
 parse_TypeWithConstraint([{'SEQUENCE',_},Lpar = {'(',_}|Rest]) ->
     {Constraint,Rest2} = parse_Constraint([Lpar|Rest]),
-    case Rest2 of
-	[{'OF',_}|Rest3] ->
-	    {Type,Rest4} = parse_Type(Rest3),
-	    {#type{def = {'SEQUENCE OF',Type}, constraint = merge_constraints([Constraint])},Rest4};
-	_ ->
-	    throw({asn1_error,{get_line(hd(Rest2)),get(asn1_module),
-			       [got,get_token(hd(Rest2)),expected,'OF']}})
-    end;
+    Rest4 = case Rest2 of
+		[{'OF',_}, {identifier,_,_Id}|Rest3] ->
+%%% TODO: make some use of the identifier, maybe useful in the XML mapping
+		    Rest3;
+		[{'OF',_}|Rest3] ->
+		    Rest3;
+		_ ->
+		    throw({asn1_error,
+			   {get_line(hd(Rest2)),get(asn1_module),
+			    [got,get_token(hd(Rest2)),expected,'OF']}})
+	    end,
+    {Type,Rest5} = parse_Type(Rest4),
+    {#type{def = {'SEQUENCE OF',Type}, 
+	   constraint = merge_constraints([Constraint])},Rest5};
+
 parse_TypeWithConstraint([{'SEQUENCE',_},{'SIZE',_},Lpar = {'(',_}|Rest]) ->
     {Constraint,Rest2} = parse_Constraint([Lpar|Rest]),
     #constraint{c=C} = Constraint,
     Constraint2 = Constraint#constraint{c={'SizeConstraint',C}},
-    case Rest2 of
-	[{'OF',_}|Rest3] ->
-	    {Type,Rest4} = parse_Type(Rest3),
-	    {#type{def = {'SEQUENCE OF',Type}, constraint = merge_constraints([Constraint2])},Rest4};
-	_ ->
-	    throw({asn1_error,{get_line(hd(Rest2)),get(asn1_module),
-			       [got,get_token(hd(Rest2)),expected,'OF']}})
-    end;
+    Rest4 = case Rest2 of
+		[{'OF',_}, {identifier,_,_Id}|Rest3] ->
+%%% TODO: make some use of the identifier, maybe useful in the XML mapping
+		    Rest3;
+		[{'OF',_}|Rest3] ->
+		    Rest3;
+		_ ->
+		    throw({asn1_error,{get_line(hd(Rest2)),get(asn1_module),
+				       [got,get_token(hd(Rest2)),expected,'OF']}})
+	    end,
+    {Type,Rest5} = parse_Type(Rest4),
+    {#type{def = {'SEQUENCE OF',Type}, constraint = merge_constraints([Constraint2])},Rest5};
+
 parse_TypeWithConstraint([{'SET',_},Lpar = {'(',_}|Rest]) ->
     {Constraint,Rest2} = parse_Constraint([Lpar|Rest]),
-    case Rest2 of
-	[{'OF',_}|Rest3] ->
-	    {Type,Rest4} = parse_Type(Rest3),
-	    {#type{def = {'SET OF',Type}, constraint = merge_constraints([Constraint])},Rest4};
-	_ ->
-	    throw({asn1_error,{get_line(hd(Rest2)),get(asn1_module),
-			       [got,get_token(hd(Rest2)),expected,'OF']}})
-    end;
+    Rest4 = case Rest2 of
+		[{'OF',_}, {identifier,_,_Id}|Rest3] ->
+%%% TODO: make some use of the identifier, maybe useful in the XML mapping
+		    Rest3;
+		[{'OF',_}|Rest3] ->
+		    Rest3;
+		_ ->
+		    throw({asn1_error,
+			   {get_line(hd(Rest2)),get(asn1_module),
+			    [got,get_token(hd(Rest2)),expected,'OF']}})
+	    end,
+    {Type,Rest5} = parse_Type(Rest4),
+    {#type{def = {'SET OF',Type}, 
+	   constraint = merge_constraints([Constraint])},Rest5};
+
 parse_TypeWithConstraint([{'SET',_},{'SIZE',_},Lpar = {'(',_}|Rest]) ->
     {Constraint,Rest2} = parse_Constraint([Lpar|Rest]),
     #constraint{c=C} = Constraint,
     Constraint2 = Constraint#constraint{c={'SizeConstraint',C}},
-    case Rest2 of
-	[{'OF',_}|Rest3] ->
-	    {Type,Rest4} = parse_Type(Rest3),
-	    {#type{def = {'SET OF',Type}, constraint = merge_constraints([Constraint2])},Rest4};
-	_ ->
-	    throw({asn1_error,{get_line(hd(Rest2)),get(asn1_module),
-			       [got,get_token(hd(Rest2)),expected,'OF']}})
-    end;
+    Rest4 = case Rest2 of
+		[{'OF',_}, {identifier,_,_Id}|Rest3] ->
+%%% TODO: make some use of the identifier, maybe useful in the XML mapping
+		    Rest3;
+		[{'OF',_}|Rest3] ->
+		    Rest3;
+		_ ->
+		    throw({asn1_error,
+			   {get_line(hd(Rest2)),get(asn1_module),
+			    [got,get_token(hd(Rest2)),expected,'OF']}})
+	    end,
+    {Type,Rest5} = parse_Type(Rest4),
+    {#type{def = {'SET OF',Type}, 
+	   constraint = merge_constraints([Constraint2])},Rest5};
+
 parse_TypeWithConstraint(Tokens) ->
     throw({asn1_error,{get_line(hd(Tokens)),get(asn1_module),
 		       [got,get_token(hd(Tokens)),expected,

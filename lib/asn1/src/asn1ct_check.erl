@@ -5416,9 +5416,12 @@ instance_of_constraints(S,#constraint{c={simpletable,Type}}) ->
 %% assign values to un-numbered identifiers
 %% check that the constraints are allowed and correct
 %% put the updated info back into database
-check_enumerated(_S,[{Name,Number}|Rest],_Constr) when is_atom(Name), is_integer(Number)->
+check_enumerated(_S,[{Name,Number}|_Rest]= NNList,_Constr) when is_atom(Name), is_integer(Number)->
     %% already checked , just return the same list
-    [{Name,Number}|Rest]; 
+    NNList; 
+check_enumerated(_S,{[{Name,Number}|_Rest],L}= NNList,_Constr) when is_atom(Name), is_integer(Number), is_list(L)->
+    %% already checked , contains extension marker, just return the same lists
+    NNList; 
 check_enumerated(S,NamedNumberList,_Constr) ->
     check_enum(S,NamedNumberList,[],[],[]).
 
