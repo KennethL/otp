@@ -5888,8 +5888,8 @@ check_relative_oid(_S,_Constr) ->
 % - that each alternative is of a valid type
 % - that the extension marks are valid
 check_choice(S,Type,Components) when is_list(Components) ->
-    case check_unique([C||C <- Components,
-			  is_record(C,'ComponentType')],#'ComponentType'.name) of
+    Components1 = [C||C = #'ComponentType'{} <- Components],
+    case check_unique(Components1,#'ComponentType'.name) of
 	[] -> 
     %%    sort_canonical(Components),
 	    Components2 = maybe_automatic_tags(S,Components),

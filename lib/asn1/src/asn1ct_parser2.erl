@@ -491,7 +491,7 @@ parse_BuiltinType([{'SEQUENCE',_},{'{',_},{'...',Line},{'!',_}|Rest]) ->
 	     Rest3};
 	_ ->
 	    {ComponentTypeLists,Rest3}=
-		parse_ComponentTypeLists2(Rest2,[#'EXTENSIONMARK'{pos=Line}],undefined),
+		parse_ComponentTypeLists2(Rest2,[#'EXTENSIONMARK'{pos=Line}]),
 	    case Rest3 of
 		[{'}',_}|Rest4] ->
 	    {#type{def=#'SEQUENCE'{components=ComponentTypeLists}},Rest4};
@@ -504,10 +504,16 @@ parse_BuiltinType([{'SEQUENCE',_},{'{',_},{'...',Line},{'!',_}|Rest]) ->
 % 			       [got,get_token(hd(Rest2)),expected,'}']}})
     end;
 parse_BuiltinType([{'SEQUENCE',_},{'{',_}|Rest]) ->
-    {ComponentTypeLists,Rest2} = parse_ComponentTypeLists(Rest, get(extensiondefault)),
+    {ComponentTypeLists,Rest2} = parse_ComponentTypeLists(Rest),
     case Rest2  of
 	[{'}',_}|Rest3] ->
-	    {#type{def=#'SEQUENCE'{components = ComponentTypeLists}},
+	    ComponentTypeLists2 = 
+		case {[Ext||Ext = #'EXTENSIONMARK'{} <- ComponentTypeLists],
+		      get(extensiondefault)} of
+		    {[],'IMPLIED'} ->  ComponentTypeLists ++ [#'EXTENSIONMARK'{}];
+		    _ -> ComponentTypeLists
+		end,
+	    {#type{def=#'SEQUENCE'{components = ComponentTypeLists2}},
 	     Rest3};
 	_ ->
 	    throw({asn1_error,{get_line(hd(Rest2)),get(asn1_module),
@@ -538,10 +544,16 @@ parse_BuiltinType([{'SET',_},{'{',_},{'...',Line},{'!',_}|Rest]) ->
 			       [got,get_token(hd(Rest2)),expected,'}']}})
     end;
 parse_BuiltinType([{'SET',_},{'{',_}|Rest]) ->
-    {ComponentTypeLists,Rest2} = parse_ComponentTypeLists(Rest,get(extensiondefault)),
+    {ComponentTypeLists,Rest2} = parse_ComponentTypeLists(Rest),
     case Rest2  of
 	[{'}',_}|Rest3] ->
-	    {#type{def=#'SET'{components = ComponentTypeLists}},
+	    ComponentTypeLists2 = 
+		case {[Ext||Ext = #'EXTENSIONMARK'{} <- ComponentTypeLists],
+		      get(extensiondefault)} of
+		    {[],'IMPLIED'} ->  ComponentTypeLists ++ [#'EXTENSIONMARK'{}];
+		    _ -> ComponentTypeLists
+		end,
+	    {#type{def=#'SET'{components = ComponentTypeLists2}},
 	     Rest3};
 	_ ->
 	    throw({asn1_error,{get_line(hd(Rest2)),get(asn1_module),
@@ -2337,7 +2349,7 @@ parse_AlternativeTypeLists(Tokens,ExtensionDefault) ->
     AltTypeList3 = 
 	case [X || X=#'EXTENSIONMARK'{} <- AltTypeList2] of
 	    [] when ExtensionDefault == 'IMPLIED' ->
-		AltTypeList2 ++ #'EXTENSIONMARK'{};
+		AltTypeList2 ++ [#'EXTENSIONMARK'{}];
 	    _ -> 
 		AltTypeList2
 	end,
@@ -2402,38 +2414,36 @@ parse_NamedType(Tokens) ->
 		       [got,get_token(hd(Tokens)),expected,identifier]}}).
 
 
-parse_ComponentTypeLists(Tokens,ExtensionDefault) ->
+parse_ComponentTypeLists(Tokens) ->
 %    Resulting tuple {ComponentTypeList,Rest1} is returned
     case Tokens of 
 	[{identifier,_,_}|_Rest0] ->
-	    {Clist,Rest01} = parse_ComponentTypeList(Tokens,ExtensionDefault),
+	    {Clist,Rest01} = parse_ComponentTypeList(Tokens),
 	    case Rest01 of
 		[{',',_}|Rest02] -> 
-		    parse_ComponentTypeLists(Rest02,Clist,ExtensionDefault); % 5 - 13
+		    parse_ComponentTypeLists(Rest02,Clist); % 5 - 13
 		_ ->
 		    {Clist,Rest01}
 	    end;
 	[{'COMPONENTS',_},{'OF',_}|_Rest] ->
-	    {Clist,Rest01} = parse_ComponentTypeList(Tokens,ExtensionDefault),
+	    {Clist,Rest01} = parse_ComponentTypeList(Tokens),
 	    case Rest01 of
 		[{',',_}|Rest02] -> 
-		    parse_ComponentTypeLists(Rest02,Clist,ExtensionDefault);
+		    parse_ComponentTypeLists(Rest02,Clist);
 		_ ->
 		    {Clist,Rest01}
 	    end;
 	_ ->
-	    parse_ComponentTypeLists(Tokens,[],ExtensionDefault)
+	    parse_ComponentTypeLists(Tokens,[])
     end.
 
-parse_ComponentTypeLists([{'...',L1},{'!',_}|Rest],Clist1,_ExtensionDefault) ->
+parse_ComponentTypeLists([{'...',L1},{'!',_}|Rest],Clist1) ->
     {_,Rest2} = parse_ExceptionIdentification(Rest),
     %% Exception info is currently thrown away
     parse_ComponentTypeLists2(Rest2,Clist1++[#'EXTENSIONMARK'{pos=L1}]);
-parse_ComponentTypeLists([{'...',L1}|Rest],Clist1,_ExtensionDefault) -> %% first Extensionmark
+parse_ComponentTypeLists([{'...',L1}|Rest],Clist1) -> %% first Extensionmark
     parse_ComponentTypeLists2(Rest,Clist1++[#'EXTENSIONMARK'{pos=L1}]);
-parse_ComponentTypeLists(Tokens,Clist1,'IMPLIED') ->
-    {Clist1++[#'EXTENSIONMARK'{}],Tokens};
-parse_ComponentTypeLists(Tokens,Clist1,_ExtensionDefault) ->
+parse_ComponentTypeLists(Tokens,Clist1) ->
     {Clist1,Tokens}.
 
 
@@ -2589,7 +2599,7 @@ parse_Enumerations([{identifier,_,Id}|Rest], Acc, ExtensionDefault) ->
 	_ ->
 	    {lists:reverse([Id|Acc]),Rest}
     end;
-parse_Enumerations([{'...',_}|Rest], Acc, ExtensionDefault) ->
+parse_Enumerations([{'...',_}|Rest], Acc, _ExtensionDefault) ->
     case Rest of
 	[{',',_}|Rest2] ->
 	    parse_Enumerations(Rest2,['EXTENSIONMARK'|Acc],undefined);
