@@ -520,7 +520,12 @@ parse_BuiltinType([{'SEQUENCE',_},{'{',_}|Rest]) ->
 			       [got,get_token(hd(Rest2)),expected,'}']}})
     end;
 
-parse_BuiltinType([{'SEQUENCE',_},{'OF',_},{identifier,_,_}|Rest]) ->
+parse_BuiltinType([{'SEQUENCE',_},{'OF',_},Id={identifier,_,_},Lt={'<',_}|Rest]) ->
+%% TODO: take care of the identifier for something useful 
+    {Type,Rest2} = parse_SelectionType([Id,Lt|Rest]),
+    {#type{def={'SEQUENCE OF',#type{def=Type,tag=[]}}},Rest2};
+
+parse_BuiltinType([{'SEQUENCE',_},{'OF',_},{identifier,_,_} |Rest]) ->
 %% TODO: take care of the identifier for something useful 
     {Type,Rest2} = parse_Type(Rest),
     {#type{def={'SEQUENCE OF',Type}},Rest2};
@@ -559,6 +564,13 @@ parse_BuiltinType([{'SET',_},{'{',_}|Rest]) ->
 	    throw({asn1_error,{get_line(hd(Rest2)),get(asn1_module),
 			       [got,get_token(hd(Rest2)),expected,'}']}})
     end;
+
+parse_BuiltinType([{'SET',_},{'OF',_},Id={identifier,_,_},Lt={'<',_}|Rest]) ->
+%% TODO: take care of the identifier for something useful 
+    {Type,Rest2} = parse_SelectionType([Id,Lt|Rest]),
+    {#type{def={'SET OF',#type{def=Type,tag=[]}}},Rest2};
+
+
 parse_BuiltinType([{'SET',_},{'OF',_},{identifier,_,_}|Rest]) ->
 %%TODO: take care of the identifier for something useful  
     {Type,Rest2} = parse_Type(Rest),
