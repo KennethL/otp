@@ -5571,14 +5571,14 @@ expand_components2(_S,{_,#typedef{typespec=#type{def=Seq}}})
     case Seq#'SEQUENCE'.components of
 	{R1,_Ext,R2} -> R1 ++ R2;
 	{Root,_Ext} -> Root;
-	Root -> Root
+	Root -> take_only_rootset(Root)
     end;
 expand_components2(_S,{_,#typedef{typespec=#type{def=Set}}})
   when is_record(Set,'SET') ->
     case Set#'SET'.components of
 	{R1,_Ext,R2} -> R1 ++ R2;
 	{Root,_Ext} -> Root;
-	Root -> Root
+	Root -> take_only_rootset(Root)
     end;
 expand_components2(_S,{_,#typedef{typespec=RefType=#type{def=#'Externaltypereference'{}}}}) ->
     [{'COMPONENTS OF',RefType}];
@@ -5594,6 +5594,12 @@ expand_components2(S,{_,ERef}) when is_record(ERef,'Externaltypereference') ->
 expand_components2(_S,Err) ->
     throw({error,{asn1,{illegal_COMPONENTS_OF,Err}}}).
 
+take_only_rootset([])->
+    [];
+take_only_rootset([#'EXTENSIONMARK'{}|_T])->
+    [];
+take_only_rootset([H|T]) ->
+    [H|take_only_rootset(T)].
 
 check_unique_sequence_tags(S,[#'ComponentType'{prop=mandatory}|Rest]) ->
     check_unique_sequence_tags(S,Rest);
@@ -5930,13 +5936,13 @@ maybe_automatic_tags(S,C) ->
 %% Pos == 1 for Root1, 2 for Ext, 3 for Root2
 tag_nums(Cl) ->
     tag_nums(Cl,0,0).
-tag_nums([{'EXTENSIONMARK',_,_}|Rest],Ext,Root2) ->
+tag_nums([#'EXTENSIONMARK'{}|Rest],Ext,Root2) ->
     tag_nums_ext(Rest,Ext,Root2);
 tag_nums([_|Rest],Ext,Root2) ->
     tag_nums(Rest,Ext+1,Root2+1);
 tag_nums([],Ext,Root2) ->
     [0,Ext,Root2].
-tag_nums_ext([{'EXTENSIONMARK',_,_}|Rest],Ext,Root2) ->
+tag_nums_ext([#'EXTENSIONMARK'{}|Rest],Ext,Root2) ->
     tag_nums_root2(Rest,Ext,Root2);
 tag_nums_ext([_|Rest],Ext,Root2) ->
     tag_nums_ext(Rest,Ext,Root2);
@@ -5986,7 +5992,7 @@ generate_automatic_tags1([],_) ->
 
 any_manual_tag([#'ComponentType'{typespec=#type{tag=[]}}|Rest]) ->
     any_manual_tag(Rest);
-any_manual_tag([{'EXTENSIONMARK',_,_}|Rest]) ->
+any_manual_tag([#'EXTENSIONMARK'{}|Rest]) ->
     any_manual_tag(Rest);
 any_manual_tag([_|_Rest]) ->
     true;
