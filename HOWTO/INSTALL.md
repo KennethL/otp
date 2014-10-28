@@ -4,7 +4,7 @@ Building and Installing Erlang/OTP
 Introduction
 ------------
 
-Added som text here to test.
+Added som text here to test how to update the documentation from Windows.
 This document describes how to build and install Erlang/OTP-%OTP-REL%.
 Erlang/OTP should be possible to build from source on any Unix/Linux system,
 including OS X. You are advised to read the whole document
