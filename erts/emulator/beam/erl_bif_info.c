@@ -76,7 +76,7 @@ static char otp_version[] = ERLANG_OTP_VERSION;
 /* Keep erts_system_version as a global variable for easy access from a core */
 static char erts_system_version[] = ("Erlang/OTP " ERLANG_OTP_RELEASE
 				     "%s"
-				     " [erts-" ERLANG_VERSION "]"
+				     " [erts-" ERLANG_VERSION ".TEST_170111]"
 #ifndef OTP_RELEASE
 #ifdef ERLANG_GIT_VERSION
 				     " [source-" ERLANG_GIT_VERSION "]"
