@@ -3719,6 +3719,8 @@ get_blocks_size([{blocks_size, Sz} | Rest], Acc) ->
     get_blocks_size(Rest, Acc+Sz);
 get_blocks_size([{_, _} | Rest], Acc) ->
     get_blocks_size(Rest, Acc);
+get_blocks_size([{_, _, _} | Rest], Acc) ->
+    get_blocks_size(Rest, Acc);
 get_blocks_size([], Acc) ->
     Acc.
 
