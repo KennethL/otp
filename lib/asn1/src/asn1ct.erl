@@ -1078,7 +1078,7 @@ get_file_list1(Stream,Dir,Includes,Acc) ->
     end.
 
 get_rule(Options) ->
-    case [Rule || Rule <- [ber,per,uper],
+    case [Rule || Rule <- [ber,per,uper,jer],
 		  Opt <- Options,
 		  Rule =:= Opt] of
 	[Rule] ->
