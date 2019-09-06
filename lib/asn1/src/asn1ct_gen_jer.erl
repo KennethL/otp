@@ -26,6 +26,7 @@
 -include("asn1_records.hrl").
 
 -export([decode_class/1]).
+-export([gen_typeinfo/2]).
 -export([gen_encode/2,gen_encode/3,gen_decode/2,gen_decode/3]).
 -export([gen_encode_prim/3]).
 -export([gen_dec_prim/2]).
@@ -89,7 +90,7 @@ suppress({M,F,A}=MFA) ->
 %%===============================================================================
 
 gen_encode(Erules, #typedef{}=D) ->
-    gen_encode_user(Erules, #typedef{}=D, true).
+    gen_encode_user(Erules, D, true).
 
 %%===============================================================================
 %% encode #{type, {tag, def, constraint}}
@@ -113,7 +114,8 @@ gen_encode(Erules,Typename,Type) when is_record(Type,type) ->
                   "%%================================",nl,
                   Func,"(Val",ObjFun,") ->",nl,
                   "   "]),
-	    asn1ct_gen:gen_encode_constructed(Erules,Typename,InnerType,Type);
+	    TypeInfo = asn1ct_constructed_jer:gen_encode_constructed(Erules,Typename,InnerType,Type),
+            emit([{asisp,TypeInfo},".",nl]);
 	_ ->
 	    true
     end;
@@ -138,134 +140,154 @@ gen_encode_user(Erules, #typedef{}=D, _Wrapper) ->
     emit([nl,nl,"%%================================"]),
     emit([nl,"%%  ",Typename]),
     emit([nl,"%%================================",nl]),
-    FuncName = {asis,enc_func(asn1ct_gen:list2name(Typename))},
-    emit([FuncName,"(Val) ->",nl]),
+    FuncName = {asis,typeinfo_func(asn1ct_gen:list2name(Typename))},
+    emit([FuncName,"() ->",nl]),
+    CurrentMod = get(currmod),
+    TypeInfo = 
+        case asn1ct_gen:type(InnerType) of
+            {constructed,bif} ->
+                asn1ct_constructed_jer:gen_encode_constructed(Erules,Typename,InnerType,Type);
+            {primitive,bif} ->
+                gen_encode_prim(jer,Type,"Val");
+            #'Externaltypereference'{module=CurrentMod,type=Etype} ->
+                typeinfo_func(Etype);
+            #'Externaltypereference'{module=Emod,type=Etype} ->
+                {Emod,typeinfo_func(Etype)};
+            'ASN1_OPEN_TYPE' ->	    
+                gen_encode_prim(jer,
+                                Type#type{def='ASN1_OPEN_TYPE'},
+                                "Val")
+        end,
+    emit([{asisp,TypeInfo},".",nl,nl]).
+
+gen_typeinfo(Erules, Type) ->
+    Typename = "notypename",
+    InnerType = asn1ct_gen:get_inner(Type#type.def),
     CurrentMod = get(currmod),
     case asn1ct_gen:type(InnerType) of
 	{constructed,bif} ->
-	    asn1ct_gen:gen_encode_constructed(Erules,Typename,InnerType,D);
+	    asn1ct_constructed_jer:gen_encode_constructed(Erules,Typename,InnerType,Type);
 	{primitive,bif} ->
-	    gen_encode_prim(jer,Type,"Val"),
-	    emit([".",nl]);
+	    gen_encode_prim(jer,Type,"Val");
 	#'Externaltypereference'{module=CurrentMod,type=Etype} ->
-	    emit(["   ",{asis,enc_func(Etype)},"(Val).",nl]);
+	    {typeref,typeinfo_func(Etype)};
 	#'Externaltypereference'{module=Emod,type=Etype} ->
-	    emit(["   ",{asis,Emod},":",{asis,enc_func(Etype)},
-                  "(Val).",nl]);
+	    {typeref,{Emod,typeinfo_func(Etype)}};
 	'ASN1_OPEN_TYPE' ->
-	    emit(["%% OPEN TYPE",nl]),
 	    gen_encode_prim(jer,
 			    Type#type{def='ASN1_OPEN_TYPE'},
-			    "Val"),
-	    emit([".",nl])
+			    "Val")
     end.
 
-gen_encode_prim(_Erules, #type{}=D, Value) ->
-    BitStringConstraint = get_size_constraint(D#type.constraint),
-    MaxBitStrSize = case BitStringConstraint of
-			[] -> none;
-			{_,'MAX'} -> none;
-			{_,Max} -> Max;
-			Max when is_integer(Max) -> Max
-		    end,
+gen_encode_prim(_Erules, #type{}=D, _Value) ->
+    %% BitStringConstraint = get_size_constraint(D#type.constraint),
+    %% MaxBitStrSize = case BitStringConstraint of
+    %%     		[] -> none;
+    %%     		{_,'MAX'} -> none;
+    %%     		{_,Max} -> Max;
+    %%     		Max when is_integer(Max) -> Max
+    %%     	    end,
     asn1ct_name:new(enumval),
     Type = case D#type.def of
-	       'OCTET STRING'    -> restricted_string;
-	       'ObjectDescriptor'-> restricted_string;
-	       'NumericString'   -> restricted_string;
-	       'TeletexString'   -> restricted_string;
-	       'T61String'       -> restricted_string;
-	       'VideotexString'  -> restricted_string;
-	       'GraphicString'   -> restricted_string;
-	       'VisibleString'   -> restricted_string;
-	       'GeneralString'   -> restricted_string;
-	       'PrintableString' -> restricted_string;
-	       'IA5String'       -> restricted_string;
-	       'UTCTime'         -> restricted_string;
-	       'GeneralizedTime' -> restricted_string;
+	       'OCTET STRING'    -> octet_string;
+               'UTF8String'      -> string;
+	       'ObjectDescriptor'-> string;
+	       'NumericString'   -> string;
+	       'TeletexString'   -> string;
+	       'T61String'       -> string;
+	       'VideotexString'  -> string;
+	       'GraphicString'   -> string;
+	       'VisibleString'   -> string;
+	       'GeneralString'   -> string;
+	       'PrintableString' -> string;
+	       'IA5String'       -> string;
+	       'UTCTime'         -> string;
+	       'GeneralizedTime' -> string;
 	       Other             -> Other
 	   end,
-    case Type of
-	restricted_string ->
-	    emit([Value]);
-	'BOOLEAN' ->
-	    emit([Value]);
-	'INTEGER' ->
-	    emit([Value]);
-	{'INTEGER',NamedNumberList} ->
-            emit([{call,jer,name2num,[Value,{asis,NamedNumberList}]}]);
-	{'ENUMERATED',NamedNumberList={_,_}} ->
-	    emit(["case ",Value," of",nl]),
-	    emit_enc_enumerated_cases(NamedNumberList);
-	{'ENUMERATED',NamedNumberList} ->
-	    emit(["case ",Value," of",nl]),
-	    emit_enc_enumerated_cases(NamedNumberList);
-	'REAL' ->
-	    asn1ct_name:new(realval),
-	    asn1ct_name:new(realsize),
-	    emit(["begin",nl,
-		  {curr,realval}," = ",
-		  {call,real_common,ber_encode_real,[Value]},com,nl,
-		  {curr,realsize}," = ",
-		  {call,erlang,byte_size,[{curr,realval}]},com,nl,
-		  {call,ber,encode_tags,
-		   [{curr,realval},{curr,realsize}]},nl,
-		  "end"]);
-	{'BIT STRING',[]} ->
-	    case asn1ct:use_legacy_types() of
-		false when MaxBitStrSize =:= none ->
-		    call(encode_unnamed_bit_string, [Value]);
-		false ->
-		    call(encode_unnamed_bit_string,
-			 [{asis,MaxBitStrSize},Value]);
-		true ->
-		    call(encode_bit_string,
-			 [{asis,BitStringConstraint},Value,
-			  {asis,[]}])
-	    end;
-	{'BIT STRING',NamedNumberList} ->
-	    case asn1ct:use_legacy_types() of
-		false when MaxBitStrSize =:= none ->
-		    call(encode_named_bit_string,
-			 [Value,{asis,NamedNumberList}]);
-		false ->
-		    call(encode_named_bit_string,
-			 [{asis,MaxBitStrSize},Value,
-			  {asis,NamedNumberList}]);
-		true ->
-		    call(encode_bit_string,
-			 [{asis,BitStringConstraint},Value,
-			  {asis,NamedNumberList}])
-	    end;
-	'NULL' ->
-	    call(encode_null, [Value]);
-	'OBJECT IDENTIFIER' ->
-	    call(encode_object_identifier, [Value]);
-	'RELATIVE-OID' ->
-	    call(encode_relative_oid, [Value]);
-	'UniversalString' ->
-	    call(encode_universal_string, [Value]);
-	'UTF8String' ->
-            emit([Value]);
-%%	    call(encode_UTF8_string, [Value]);
-	'BMPString' ->
-	    call(encode_BMP_string, [Value]);
-	'ASN1_OPEN_TYPE' ->
-	    call(encode_open_type, [Value])
-    end.
+    Type.
 
-emit_enc_enumerated_cases({L1,L2}) ->
-    emit_enc_enumerated_cases(L1++L2, ext);
-emit_enc_enumerated_cases(L) ->
-    emit_enc_enumerated_cases(L, noext).
+%%     case Type of
+%% 	restricted_string ->
+%% 	    emit([Value]);
+%% 	'BOOLEAN' ->
+%% 	    emit([Value]);
+%% 	'INTEGER' ->
+%% 	    emit([Value]);
+%% 	{'INTEGER',NamedNumberList} ->
+%%             emit([{call,jer,name2num,[Value,{asis,NamedNumberList}]}]);
+%% 	{'ENUMERATED',NamedNumberList={_,_}} ->
+%% 	    emit(["case ",Value," of",nl]),
+%% 	    emit_enc_enumerated_cases(NamedNumberList);
+%% 	{'ENUMERATED',NamedNumberList} ->
+%% 	    emit(["case ",Value," of",nl]),
+%% 	    emit_enc_enumerated_cases(NamedNumberList);
+%% 	'REAL' ->
+%% 	    asn1ct_name:new(realval),
+%% 	    asn1ct_name:new(realsize),
+%% 	    emit(["begin",nl,
+%% 		  {curr,realval}," = ",
+%% 		  {call,real_common,ber_encode_real,[Value]},com,nl,
+%% 		  {curr,realsize}," = ",
+%% 		  {call,erlang,byte_size,[{curr,realval}]},com,nl,
+%% 		  {call,ber,encode_tags,
+%% 		   [{curr,realval},{curr,realsize}]},nl,
+%% 		  "end"]);
+%% 	{'BIT STRING',[]} ->
+%% 	    case asn1ct:use_legacy_types() of
+%% 		false when MaxBitStrSize =:= none ->
+%% 		    call(encode_unnamed_bit_string, [Value]);
+%% 		false ->
+%% 		    call(encode_unnamed_bit_string,
+%% 			 [{asis,MaxBitStrSize},Value]);
+%% 		true ->
+%% 		    call(encode_bit_string,
+%% 			 [{asis,BitStringConstraint},Value,
+%% 			  {asis,[]}])
+%% 	    end;
+%% 	{'BIT STRING',NamedNumberList} ->
+%% 	    case asn1ct:use_legacy_types() of
+%% 		false when MaxBitStrSize =:= none ->
+%% 		    call(encode_named_bit_string,
+%% 			 [Value,{asis,NamedNumberList}]);
+%% 		false ->
+%% 		    call(encode_named_bit_string,
+%% 			 [{asis,MaxBitStrSize},Value,
+%% 			  {asis,NamedNumberList}]);
+%% 		true ->
+%% 		    call(encode_bit_string,
+%% 			 [{asis,BitStringConstraint},Value,
+%% 			  {asis,NamedNumberList}])
+%% 	    end;
+%% 	'NULL' ->
+%% 	    call(encode_null, [Value]);
+%% 	'OBJECT IDENTIFIER' ->
+%% 	    call(encode_object_identifier, [Value]);
+%% 	'RELATIVE-OID' ->
+%% 	    call(encode_relative_oid, [Value]);
+%% 	'UniversalString' ->
+%% 	    call(encode_universal_string, [Value]);
+%% 	'UTF8String' ->
+%%             emit([Value]);
+%% %%	    call(encode_UTF8_string, [Value]);
+%% 	'BMPString' ->
+%% 	    call(encode_BMP_string, [Value]);
+%% 	'ASN1_OPEN_TYPE' ->
+%% 	    call(encode_open_type, [Value])
+%%     end.
 
-emit_enc_enumerated_cases([{EnumName,_EnumVal}|T], Ext) ->
-    emit([{asis,EnumName}," -> <<\"",{asis,EnumName},"\">>;",nl]),
-    emit_enc_enumerated_cases(T, Ext);
-emit_enc_enumerated_cases([], _Ext) ->
-    %% FIXME: Should extension be handled?
-    emit([{curr,enumval}," -> exit({error,{asn1, {enumerated_not_in_range,",{curr, enumval},"}}})"]),
-    emit([nl,"end"]).
+%% emit_enc_enumerated_cases({L1,L2}) ->
+%%     emit_enc_enumerated_cases(L1++L2, ext);
+%% emit_enc_enumerated_cases(L) ->
+%%     emit_enc_enumerated_cases(L, noext).
+
+%% emit_enc_enumerated_cases([{EnumName,_EnumVal}|T], Ext) ->
+%%     emit([{asis,EnumName}," -> <<\"",{asis,EnumName},"\">>;",nl]),
+%%     emit_enc_enumerated_cases(T, Ext);
+%% emit_enc_enumerated_cases([], _Ext) ->
+%%     %% FIXME: Should extension be handled?
+%%     emit([{curr,enumval}," -> exit({error,{asn1, {enumerated_not_in_range,",{curr, enumval},"}}})"]),
+%%     emit([nl,"end"]).
 
 %% encode_integer(Val) ->
 %%     Bytes =
@@ -299,25 +321,26 @@ emit_enc_enumerated_cases([], _Ext) ->
 %% decode #{typedef, {pos, name, typespec}}
 %%===============================================================================
 
-gen_decode(Erules,Type) when is_record(Type,typedef) ->
-    FuncName0 =
-	case {asn1ct:get_gen_state_field(active),
-	      asn1ct:get_gen_state_field(prefix)} of
-	    {true,Pref} -> 
-		%% prevent duplicated function definitions
-		case asn1ct:current_sindex() of
-		    I when is_integer(I), I > 0 ->
-			[Pref,Type#typedef.name,"_",I];
-		    _->
-			[Pref,Type#typedef.name]
-		end;
-	    {_,_} ->
-                ["dec_",Type#typedef.name]
-	end,
-    FuncName = {asis,list_to_atom(lists:concat(FuncName0))},
-    emit([nl,nl,
-          FuncName,"(JsonTerm) ->",nl]),
-    gen_decode_user(Erules,Type).
+gen_decode(_,_) -> ok.
+%% gen_decode(Erules,Type) when is_record(Type,typedef) ->
+%%     FuncName0 =
+%% 	case {asn1ct:get_gen_state_field(active),
+%% 	      asn1ct:get_gen_state_field(prefix)} of
+%% 	    {true,Pref} -> 
+%% 		%% prevent duplicated function definitions
+%% 		case asn1ct:current_sindex() of
+%% 		    I when is_integer(I), I > 0 ->
+%% 			[Pref,Type#typedef.name,"_",I];
+%% 		    _->
+%% 			[Pref,Type#typedef.name]
+%% 		end;
+%% 	    {_,_} ->
+%%                 ["dec_",Type#typedef.name]
+%% 	end,
+%%     FuncName = {asis,list_to_atom(lists:concat(FuncName0))},
+%%     emit([nl,nl,
+%%           FuncName,"(JsonTerm) ->",nl]),
+%%     gen_decode_user(Erules,Type).
 
 gen_inc_decode(Erules,Type) when is_record(Type,typedef) ->
     Prefix = asn1ct:get_gen_state_field(prefix),
@@ -437,25 +460,26 @@ gen_decode(Erules,Typename,Type) when is_record(Type,type) ->
 %%===============================================================================
 %% decode ComponentType
 %%===============================================================================
+gen_decode(_,_,_) -> ok.
 
-gen_decode(Erules,Tname,#'ComponentType'{name=Cname,typespec=Type}) ->
-    NewTname = [Cname|Tname],
-    %% The tag is set to [] to avoid that it is taken into account
-    %% twice, both as a component/alternative (passed as argument to
-    %% the encode/decode function), and within the encode decode
-    %% function itself.
-    NewType = Type#type{tag=[]},
-    case {asn1ct:get_gen_state_field(active),
-	  asn1ct:get_tobe_refed_func(NewTname)} of
-	{true,{_,NameList}} ->
-	    asn1ct:update_gen_state(namelist,NameList),
-	    %% remove to gen_refed_funcs list from tobe_refed_funcs later
-	    gen_decode(Erules,NewTname,NewType);
-	{No,_} when No == false; No == undefined ->
-	    gen_decode(Erules,NewTname,NewType);
-	_ ->
-	    ok
-    end.
+%% gen_decode(Erules,Tname,#'ComponentType'{name=Cname,typespec=Type}) ->
+%%     NewTname = [Cname|Tname],
+%%     %% The tag is set to [] to avoid that it is taken into account
+%%     %% twice, both as a component/alternative (passed as argument to
+%%     %% the encode/decode function), and within the encode decode
+%%     %% function itself.
+%%     NewType = Type#type{tag=[]},
+%%     case {asn1ct:get_gen_state_field(active),
+%% 	  asn1ct:get_tobe_refed_func(NewTname)} of
+%% 	{true,{_,NameList}} ->
+%% 	    asn1ct:update_gen_state(namelist,NameList),
+%% 	    %% remove to gen_refed_funcs list from tobe_refed_funcs later
+%% 	    gen_decode(Erules,NewTname,NewType);
+%% 	{No,_} when No == false; No == undefined ->
+%% 	    gen_decode(Erules,NewTname,NewType);
+%% 	_ ->
+%% 	    ok
+%%     end.
 
 
 gen_decode_user(Erules,D) when is_record(D,typedef) ->
@@ -1500,6 +1524,9 @@ extaddgroup2sequence(ExtList) when is_list(ExtList) ->
 
 call(F, Args) ->
     asn1ct_func:call(jer, F, Args).
+
+typeinfo_func(Tname) ->
+    list_to_atom(lists:concat(["typeinfo_",Tname])).    
 
 enc_func(Tname) ->
     list_to_atom(lists:concat(["enc_",Tname])).

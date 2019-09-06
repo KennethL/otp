@@ -660,8 +660,8 @@ pgen_exports(#gen{options=Options}=Gen, Code) ->
             gen_exports(Types, "enc_", 1),
             gen_exports(Types, "dec_", 1);
         #gen{erule=jer} ->
-            gen_exports(Types, "enc_", 1),
-            gen_exports(Types, "dec_", 1)
+            gen_exports(Types, "typeinfo_", 0)
+%%            gen_exports(Types, "dec_", 1)
     end,
 
     A2nNames = [X || {n2n,X} <- Options],
@@ -717,6 +717,7 @@ pgen_dispatcher(Gen, Types) ->
     Options = Gen#gen.options,
     NoFinalPadding = lists:member(no_final_padding, Options),
     NoOkWrapper = proplists:get_bool(no_ok_wrapper, Options),
+    CurrMod = lists:concat(["'",get(currmod),"'"]),
 
     %% ENCODER
     Call = case Gen of
@@ -726,7 +727,10 @@ pgen_dispatcher(Gen, Types) ->
 	       #gen{erule=ber} ->
 		   "iolist_to_binary(element(1, encode_disp(Type, Data)))";
                #gen{erule=jer} ->
-                   "?JSON_ENCODE(encode_disp(Type, Data))";
+                   ["?JSON_ENCODE(",
+                    {call,jer,encode_jer,[CurrMod,
+                                          "list_to_existing_atom(lists:concat([typeinfo_,Type]))",
+                                          "Data"]},")"];
 	       #gen{erule=per,aligned=false} when NoFinalPadding ->
 		   asn1ct_func:need({uper,complete_NFP,1}),
 		   "complete_NFP(encode_disp(Type, Data))";
@@ -787,7 +791,9 @@ pgen_dispatcher(Gen, Types) ->
 	    emit(["   Result = ",DecodeDisp,",",nl]),
             result_line(NoOkWrapper, ["Result"]);
 	{#gen{erule=jer},false} ->
-	    emit(["   Result = ",DecodeDisp,",",nl]),
+	    emit(["   Result = ",{call,jer,decode_jer,[ CurrMod,
+                                                        "list_to_existing_atom(lists:concat([typeinfo_,Type]))", 
+                                                        DecWrap]},",",nl]),
             result_line(NoOkWrapper, ["Result"]);
 
 
@@ -810,8 +816,13 @@ pgen_dispatcher(Gen, Types) ->
     gen_decode_partial_incomplete(Gen),
     gen_partial_inc_dispatcher(Gen),
 
-    gen_dispatcher(Types, "encode_disp", "enc_"),
-    gen_dispatcher(Types, "decode_disp", "dec_").
+    case Gen of
+        #gen{erule=jer} ->
+            ok;
+        _ ->
+            gen_dispatcher(Types, "encode_disp", "enc_"),
+            gen_dispatcher(Types, "decode_disp", "dec_")
+    end.
 
 result_line(NoOkWrapper, Items) ->
     S = ["   "|case NoOkWrapper of
@@ -993,6 +1004,8 @@ do_emit({var,Variable}) when is_atom(Variable) ->
     [Head-32|V];
 do_emit({asis,What}) ->
     io_lib:format("~w", [What]);
+do_emit({asisp,What}) ->
+    io_lib:format("~p", [What]);
 do_emit({call,M,F,A}) ->
     MFA = {M,F,length(A)},
     asn1ct_func:need(MFA),
@@ -1451,6 +1464,7 @@ get_fieldtype([Field|Rest],FieldName) ->
 %% 
 %% used to output function names in generated code.
 
+
 list2name(L) ->
     NewL = list2name1(L),
     lists:concat(lists:reverse(NewL)).
@@ -1463,8 +1477,8 @@ list2name1([{ptype,H}|_T]) ->
     [H];
 list2name1([H|_T]) ->
     [H];
-list2name1([]) ->
-    [].
+list2name1(H) ->
+    H.
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

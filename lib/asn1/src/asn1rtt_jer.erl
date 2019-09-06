@@ -51,8 +51,10 @@
 
 -export([decode_primitive_incomplete/2,decode_selective/2]).
 
-%% For DER.
--export([dynamicsort_SET_components/1,dynamicsort_SETOF/1]).
+
+%% For typeinfo JER
+-export([encode_jer/3, decode_jer/3]).
+
 
 %% the encoding of class of tag bits 8 and 7
 -define(UNIVERSAL,   0).
@@ -1381,42 +1383,6 @@ decode_length(<<0:1,Length:7,T/binary>>) ->
 decode_length(<<1:1,LL:7,Length:LL/unit:8,T/binary>>) ->
     {Length,T}.
 
-%% dynamicsort_SET_components(Arg) ->
-%% Res Arg -> list()
-%% Res -> list()
-%% Sorts the elements in Arg according to the encoded tag in
-%% increasing order.
-dynamicsort_SET_components(ListOfEncCs) ->
-    TagBinL = [begin
-		   Bin = list_to_binary(L),
-		   {dynsort_decode_tag(Bin),Bin}
-	       end || L <- ListOfEncCs],
-    [E || {_,E} <- lists:keysort(1, TagBinL)].
-
-%% dynamicsort_SETOF(Arg) -> Res
-%% Arg -> list()
-%% Res -> list()
-%% Sorts the elements in Arg in increasing size
-dynamicsort_SETOF(ListOfEncVal) ->
-    BinL = lists:map(fun(L) when is_list(L) -> list_to_binary(L);
-			(B) -> B end, ListOfEncVal),
-    lists:sort(BinL).
-
-%% multiple octet tag
-dynsort_decode_tag(<<Class:2,_Form:1,31:5,Buffer/binary>>) ->
-    TagNum = dynsort_decode_tag(Buffer, 0),
-    {Class,TagNum};
-
-%% single tag (< 31 tags)
-dynsort_decode_tag(<<Class:2,_Form:1,TagNum:5,_/binary>>) ->
-    {Class,TagNum}.
-
-dynsort_decode_tag(<<0:1,PartialTag:7,_/binary>>, TagAcc) ->
-    (TagAcc bsl 7) bor PartialTag;
-dynsort_decode_tag(<<_:1,PartialTag:7,Buffer/binary>>, TagAcc0) ->
-    TagAcc = (TagAcc0 bsl 7) bor PartialTag,
-    dynsort_decode_tag(Buffer, TagAcc).
-
 
 %%-------------------------------------------------------------------------
 %% INTERNAL HELPER FUNCTIONS (not exported)
@@ -1447,3 +1413,81 @@ collect_parts_bit([{?N_BIT_STRING,<<Unused,Bits/binary>>}|Rest], Acc, Uacc) ->
     collect_parts_bit(Rest, [Bits|Acc], Unused+Uacc);
 collect_parts_bit([], Acc, Uacc) ->
     list_to_binary([Uacc|lists:reverse(Acc)]).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Common code for all JER encoding/decoding
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+encode_jer(Module,InfoFunc,Val) ->
+    Info = Module:InfoFunc(),
+    encode_jer(Info,Val).
+
+encode_jer({sequence,Sname,Arity,CompInfos},Value) 
+  when tuple_size(Value) == Arity+1 ->
+    [Sname|Clist] = tuple_to_list(Value),
+    encode_jer_component(CompInfos,Clist,#{});
+encode_jer(string,Str) when is_list(Str) ->
+    Str;
+encode_jer({string,_Prop},Str) when is_list(Str) ->
+    Str;
+encode_jer(string,Str) when is_binary(Str) ->
+    Str;
+encode_jer({string,_Prop},Str) when is_binary(Str) ->
+    Str;
+encode_jer('INTEGER',Int) when is_integer(Int) ->
+    Int;
+encode_jer({'INTEGER',_Prop},Int) when is_integer(Int) ->
+    Int;
+encode_jer({'BOOLEAN',_Prop},Bool) when Bool == false; Bool == true ->
+    Bool;
+encode_jer(octet_string,Str) when is_binary(Str) ->
+    Str;
+encode_jer({'ENUMERATED',_EnumList},Val) when is_atom(Val) ->
+    Val; 
+%% FIXME, should maybe represent EnumList as a Map and 
+%% check if Val is one of the allowed ones
+ 
+encode_jer({sof,Type},Vals) when is_list(Vals) ->
+    [encode_jer(Type,Val)||Val <- Vals];
+encode_jer({choice,Choices},{Alt,Value}) when is_map_key(Alt,Choices) ->
+    EncodedVal = encode_jer(maps:get(Alt,Choices),Value),
+    #{Alt => EncodedVal};
+encode_jer('BIT STRING',Value) when is_bitstring(Value) ->
+    Value; % FIXME, must convert this to something according to JER
+encode_jer({'BIT STRING',_Prop},Value) when is_bitstring(Value) ->
+    Value. % FIXME, must convert this to something according to JER
+
+encode_jer_component([{Name,Type}|CompInfos],[Value|Rest],MapAcc) ->
+    Enc = encode_jer(Type,Value),
+    encode_jer_component(CompInfos,Rest,MapAcc#{Name=>Enc});
+encode_jer_component([],_,MapAcc) ->
+    MapAcc.
+
+decode_jer(Module,InfoFunc,Val) ->
+    Info = Module:InfoFunc(),
+    decode_jer(Info,Val).
+
+decode_jer({sequence,Sname,_Arity,CompInfos},Value) 
+  when is_map(Value) ->    
+    DecodedComps = decode_jer_component(CompInfos,Value,[]),
+    list_to_tuple([Sname|DecodedComps]);
+decode_jer(string,Str) when is_binary(Str) ->
+    Str;
+decode_jer({string,_Prop},Str) when is_binary(Str) ->
+    Str;
+decode_jer(integer,Int) when is_integer(Int) ->
+    Int;
+decode_jer({integer,_Prop},Int) when is_integer(Int) ->
+    Int;
+decode_jer({sof,Type},Vals) when is_list(Vals) ->
+    [decode_jer(Type,Val)||Val <- Vals].
+
+decode_jer_component([{Name,Type}|CompInfos],VMap,Acc) when is_map_key(Name,VMap) ->
+    Value = maps:get(Name,VMap),
+    Dec = decode_jer(Type,Value),
+    decode_jer_component(CompInfos,VMap,[Dec|Acc]);
+decode_jer_component([{_Name,_Type}|CompInfos],VMap,Acc) ->
+    decode_jer_component(CompInfos,VMap,[asn1_NOVALUE|Acc]);
+decode_jer_component([],_,Acc) ->
+    lists:reverse(Acc).
+
