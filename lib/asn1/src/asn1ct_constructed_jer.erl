@@ -50,36 +50,6 @@
 
 gen_decode_sof(_,_,_,_) -> ok.
 
-%% gen_encode_sof_components(Gen, Typename, SeqOrSetOf, #type{}=Cont) ->
-%%     {Objfun,Objfun_novar,EncObj} =
-%% 	case Cont#type.tablecinf of
-%% 	    [{objfun,_}|_R] ->
-%% 		{", ObjFun",", _",{no_attr,"ObjFun"}};
-%% 	    _ ->
-%% 		{"","",false}
-%% 	end,
-%%     emit(["'enc_",asn1ct_gen:list2name(Typename),
-%% 	  "_components'([]",Objfun_novar,", Acc) -> ",nl]),
-
-%%     case {Gen,SeqOrSetOf} of
-%%         {#gen{der=true},'SET OF'} ->
-%% 	    asn1ct_func:need({ber,dynamicsort_SETOF,1}),
-%% 	    emit([indent(3),
-%% 		  "dynamicsort_SETOF(Acc);",nl,nl]);
-%% 	{_,_} ->
-%% 	    emit([indent(3),"lists:reverse(Acc);",nl,nl])
-%%     end,
-%%     emit(["'enc_",asn1ct_gen:list2name(Typename),
-%% 	  "_components'([H|T]",Objfun,",Acc) ->",nl]),
-%%     TypeNameSuffix = asn1ct_gen:constructed_suffix(SeqOrSetOf,Cont#type.def),
-%%     gen_enc_line(Gen, Typename, TypeNameSuffix, Cont, "H", 3,
-%% 		 mandatory, EncObj),
-%%     emit([",",nl]),
-%%     emit([indent(3),"'enc_",asn1ct_gen:list2name(Typename),
-%% 	  "_components'(T",Objfun,","]), 
-%%     emit(["[EncV|Acc]).",nl,nl]).
-
-
 %%===============================================================================
 %%===============================================================================
 %%===============================================================================
