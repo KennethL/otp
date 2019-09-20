@@ -1528,7 +1528,7 @@ ct_gen_module(#gen{erule=jer}) ->
 ct_constructed_module(#gen{erule=ber}) ->
     asn1ct_constructed_ber_bin_v2;
 ct_constructed_module(#gen{erule=jer}) ->
-    asn1ct_constructed_jer;
+    asn1ct_gen_jer;
 ct_constructed_module(#gen{erule=per}) ->
     asn1ct_constructed_per.
 

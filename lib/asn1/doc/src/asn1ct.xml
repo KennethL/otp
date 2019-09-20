@@ -78,7 +78,7 @@
       <type>
         <v>Asn1module = atom() | string()</v>
         <v>Options = [Option| OldOption]</v>
-        <v>Option = ber | per | uper | der | compact_bit_string |
+        <v>Option = ber | per | uper | jer | der | compact_bit_string |
 	legacy_bit_string | legacy_erlang_types |
 	noobj | {n2n, EnumTypeName} |{outdir, Dir} | {i, IncludeDir} |
 	asn1config | undec_rest | no_ok_wrapper |
@@ -142,12 +142,13 @@ File3.asn</pre>
 	  available options are as follows:
 	</p>
 	<taglist>
-          <tag><c>ber | per | uper</c></tag>
+          <tag><c>ber | per | uper | jer</c></tag>
           <item>
             <p>
 	      The encoding rule to be used. The supported encoding rules
-	      are Basic Encoding Rules (BER),
-	      Packed Encoding Rules (PER) aligned, and PER unaligned.
+	      are Basic Encoding Rules (<c>ber</c>),
+	      Packed Encoding Rules (<c>per</c>) aligned, PER unaligned (<c>uper</c>) and
+	      JSON Encoding Rules (<c>jer</c>).
 	      If the encoding rule option is omitted, <c>ber</c> 
 	      is the default.
 	    </p>
@@ -160,7 +161,7 @@ File3.asn</pre>
           <tag><c>der</c></tag>
           <item>
             <p>
-	      With this option the Distinguished Encoding Rules (DER) is chosen.
+	      With this option the Distinguished Encoding Rules (<c>der</c>) is chosen.
 	      DER is regarded as a specialized variant of the BER encoding 
               rule. Therefore, this option only makes sense together
 	      with option <c>ber</c>.

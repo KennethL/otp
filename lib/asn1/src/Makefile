@@ -58,7 +58,6 @@ CT_MODULES= \
 	asn1ct_name \
 	asn1ct_constructed_per \
 	asn1ct_constructed_ber_bin_v2 \
-	asn1ct_constructed_jer \
 	asn1ct_gen_ber_bin_v2 \
 	asn1ct_gen_jer \
 	asn1ct_imm \
