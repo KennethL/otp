@@ -1462,14 +1462,16 @@ encode_jer({choice,Choices},{Alt,Value}) ->
         false ->
             exit({error,{asn1,{invalid_choice,Alt,Choices}}})
     end;
-encode_jer('BIT STRING',Value) when is_bitstring(Value) ->
-    Str = bitstring2json(Value),
-    #{value => Str, length => bit_size(Value)};
-
+encode_jer(B = 'BIT STRING',Value) ->
+    encode_jer({B,[]},Value);
 encode_jer({'BIT STRING',_Prop},Value) when is_bitstring(Value) ->
     % FIXME, a fixed length bitstring should be represented differently
     Str = bitstring2json(Value),
-    #{value => Str, length => bit_size(Value)}.
+    #{value => Str, length => bit_size(Value)};
+encode_jer(B = {'BIT STRING',_Prop},{Unused,Binary}) when is_binary(Binary) ->
+    Size = byte_size(Binary) - Unused,
+    <<BitStr:Size/bitstring,_/bitstring >> = Binary, 
+    encode_jer(B, BitStr).
 
 encode_jer_component([_|CompInfos],[asn1_NOVALUE|Rest],MapAcc) ->
     encode_jer_component(CompInfos,Rest,MapAcc);
