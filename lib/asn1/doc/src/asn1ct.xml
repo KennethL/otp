@@ -58,7 +58,8 @@
 
       <note>
 	<p>In OTP R16, the options were simplified. The back end is chosen
-	using one of the options <c>ber</c>, <c>per</c>, or <c>uper</c>.
+	using one of the options <c>ber</c>, <c>per</c>, <c>uper</c> or
+	<c>jer</c>.
 	Options <c>optimize</c>, <c>nif</c>, and <c>driver</c> options
 	are no longer necessary (and the ASN.1 compiler generates a
 	warning if they are used). Options <c>ber_bin</c>, <c>per_bin</c>,
@@ -149,6 +150,26 @@ File3.asn</pre>
 	      are Basic Encoding Rules (<c>ber</c>),
 	      Packed Encoding Rules (<c>per</c>) aligned, PER unaligned (<c>uper</c>) and
 	      JSON Encoding Rules (<c>jer</c>).
+	      The <c>jer</c> option can be used by itself to generate a module
+	      that only supports encoding/decoding to JER or it can
+	      be used as a supplementary option to ber, per and uper.
+	      In the latter case a module with for both the main encoding rules
+	      and JER will be generated.
+	      The exported functions for JER will then be
+	      <c>jer_encode(Type, Value)</c> and <c>jer_decode(Type, Bytes)</c>.
+	    </p>
+	    <p>
+	      The <c>jer</c> encoding rules are experimental in OTP 22.
+	      Also note that when using the <c>jer</c> encoding rules the
+	      generated module will get a dependency to an external json
+	      component. The generated code is currently tested together with:
+	      <list>
+		<item>jsone</item>
+		<item>jsx</item>
+		<item>jiffy</item>
+	      </list>
+	    </p>
+	    <p>
 	      If the encoding rule option is omitted, <c>ber</c> 
 	      is the default.
 	    </p>
