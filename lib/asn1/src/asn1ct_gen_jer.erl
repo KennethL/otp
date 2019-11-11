@@ -117,7 +117,10 @@ gen_encode_sequence(Gen, Typename, #type{}=D) ->
 		end
 	end,
     CompTypes = gen_enc_comptypes(Gen, Typename, CompList1, 1, EncObj, []),
-    {sequence,list_to_atom(asn1ct_gen:list2name(Typename)),length(CompList1),CompTypes}.
+    Prefix = asn1ct_gen:get_record_name_prefix(Gen),
+    {sequence,
+     list_to_atom(lists:concat([Prefix,asn1ct_gen:list2name(Typename)])),
+     length(CompList1),CompTypes}.
 
 gen_decode_sequence(_,_,_) -> ok.
 

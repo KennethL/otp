@@ -1337,8 +1337,8 @@ gen_head(#gen{options=Options}=Gen, Mod, Hrl) ->
               "-define(JSON_DECODE(Data),jsone:decode(Data)).",nl,
               "-define(JSON_ENCODE(Term),jsone:encode(Term)).",nl,
               "-else.",nl,
-              "-define(JSON_DECODE(Data),jsone:decode(Data)).",nl,
-              "-define(JSON_ENCODE(Term),jsone:encode(Term)).",nl,
+              "-define(JSON_DECODE(Data),jsx:decode(Data,[return_maps])).",nl,
+              "-define(JSON_ENCODE(Term),jsx:encode(Term)).",nl,
               "-endif.",nl
              ]).
 
