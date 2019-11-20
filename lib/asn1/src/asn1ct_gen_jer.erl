@@ -246,7 +246,7 @@ gen_enc_line(Erules,TopType,Cname,Type,Element,_Indent,OptOrMand,_Assign,EncObj)
             _ ->
                 case WhatKind of
                     {primitive,bif} ->
-                        gen_encode_prim(ber, Type, Element);
+                        gen_encode_prim(jer, Type, Element);
                     'ASN1_OPEN_TYPE' ->
                         case Type#type.def of
                             #'ObjectClassFieldType'{} -> %Open Type
@@ -459,7 +459,7 @@ gen_typeinfo(Erules, Type) ->
     end.
 
 gen_encode_prim(_Erules, #type{}=D, _Value) ->
-    %% BitStringConstraint = get_size_constraint(D#type.constraint),
+    BitStringConstraint = get_size_constraint(D#type.constraint),
     %% MaxBitStrSize = case BitStringConstraint of
     %%     		[] -> none;
     %%     		{_,'MAX'} -> none;
@@ -468,7 +468,7 @@ gen_encode_prim(_Erules, #type{}=D, _Value) ->
     %%     	    end,
     asn1ct_name:new(enumval),
     Type = case D#type.def of
-	       'OCTET STRING'    -> octet_string;
+	       'OCTET STRING'    -> maybe_legacy_octet_string();
                'UTF8String'      -> string;
 	       'ObjectDescriptor'-> string;
 	       'NumericString'   -> string;
@@ -482,10 +482,34 @@ gen_encode_prim(_Erules, #type{}=D, _Value) ->
 	       'IA5String'       -> string;
 	       'UTCTime'         -> string;
 	       'GeneralizedTime' -> string;
+               {'BIT STRING',_NNL} -> maybe_legacy_bit_string(BitStringConstraint);
 	       Other             -> Other
 	   end,
     Type.
 
+maybe_legacy_octet_string() ->
+    case asn1ct:use_legacy_types() of
+        true ->
+            legacy_octet_string;
+        false ->
+            octet_string
+    end.
+
+maybe_legacy_bit_string(SizeConstraint) ->
+    Type = case asn1ct:get_bit_string_format() of
+               bitstring ->
+                   bit_string;
+               compact ->
+                   compact_bit_string;
+               legacy ->
+                   legacy_bit_string
+           end,
+    case SizeConstraint of
+        S when is_integer(S) ->
+            {Type,S};
+        _ ->
+            Type
+    end.
 %%===========================================================================
 %% Generate DECODING
 %%===========================================================================

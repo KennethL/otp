@@ -19,9 +19,10 @@
 %%
 
 -module(asn1rtt_jer).
-
 %% encoding / decoding of BER
-
+-ifdef(DEBUG).
+-compile(export_all).
+-endif.
 %% For typeinfo JER
 -export([encode_jer/3, decode_jer/3]).
 
@@ -39,9 +40,9 @@ encode_jer({sequence,Sname,Arity,CompInfos},Value)
     [Sname|Clist] = tuple_to_list(Value),
     encode_jer_component(CompInfos,Clist,#{});
 encode_jer(string,Str) when is_list(Str) ->
-    Str;
+    list_to_binary(Str);
 encode_jer({string,_Prop},Str) when is_list(Str) ->
-    Str;
+    list_to_binary(Str);
 encode_jer(string,Str) when is_binary(Str) ->
     Str;
 encode_jer({string,_Prop},Str) when is_binary(Str) ->
@@ -54,10 +55,17 @@ encode_jer('BOOLEAN',Bool) when is_boolean(Bool) ->
     Bool;
 encode_jer({'BOOLEAN',_Prop},Bool) when is_boolean(Bool) ->
     Bool;
+encode_jer('NULL','NULL') ->
+    null;
+encode_jer(legacy_octet_string, Value) when is_list(Value) ->
+    bitstring2json(list_to_binary(Value));
+encode_jer({legacy_octet_string,_Prop}, Value) when is_list(Value) ->
+    bitstring2json(list_to_binary(Value));
+encode_jer(octet_string,Value) when is_binary(Value) ->
+    encode_jer({octet_string,[]}, Value);
 encode_jer({octet_string,_Prop}, Value) when is_binary(Value) ->
     bitstring2json(Value);
-encode_jer(octet_string,Value) when is_binary(Value) ->
-    bitstring2json(Value);
+
 %% FIXME, should maybe represent EnumList as a Map and 
 %% check if Val is one of the allowed ones
 encode_jer({'ENUMERATED',_EnumList},Val) when is_atom(Val) ->
@@ -77,16 +85,22 @@ encode_jer({choice,Choices},{Alt,Value}) ->
             exit({error,{asn1,{invalid_choice,Alt,Choices}}})
     end;
     
-encode_jer(B = 'BIT STRING',Value) ->
-    encode_jer({B,[]},Value);
-encode_jer({'BIT STRING',_Prop},Value) when is_bitstring(Value) ->
-    % FIXME, a fixed length bitstring should be represented differently
+encode_jer(bit_string,Value) ->
     Str = bitstring2json(Value),
     #{value => Str, length => bit_size(Value)};
-encode_jer(B = {'BIT STRING',_Prop},{Unused,Binary}) when is_binary(Binary) ->
-    Size = byte_size(Binary) - Unused,
+encode_jer({bit_string,FixedLength},Value) when is_bitstring(Value), is_integer(FixedLength) ->
+    FixedLength = bit_size(Value), % assertion that must hold 
+    bitstring2json(Value);
+encode_jer(compact_bit_string,{Unused,Binary}) when is_binary(Binary) ->
+    Size = bit_size(Binary) - Unused,
     <<BitStr:Size/bitstring,_/bitstring >> = Binary, 
-    encode_jer(B, BitStr).
+    encode_jer(bit_string,BitStr);
+
+encode_jer({compact_bit_string,FixedLength},{Unused,Binary}) when is_binary(Binary) ->
+    Size = bit_size(Binary) - Unused,
+    FixedLength = Size, % assertion that must hold otherwise faulty input
+    <<BitStr:Size/bitstring,_/bitstring >> = Binary, 
+    encode_jer({bit_string,FixedLength},BitStr).
 
 encode_jer_component([_|CompInfos],[asn1_NOVALUE|Rest],MapAcc) ->
     encode_jer_component(CompInfos,Rest,MapAcc);
@@ -129,8 +143,12 @@ decode_jer('BOOLEAN',Bool) when is_boolean(Bool) ->
     Bool;
 decode_jer({'BOOLEAN',_Prop},Bool) when is_boolean(Bool) ->
     Bool;
+decode_jer('NULL',null) ->
+    'NULL';
+decode_jer(legacy_octet_string,Str) when is_binary(Str) ->
+    json2octetstring2string(binary_to_list(Str));
 decode_jer(octet_string,Str) when is_binary(Str) ->
-    json2octetstring(binary_to_list(Str));
+    json2octetstring2binary(binary_to_list(Str));
 decode_jer({sof,Type},Vals) when is_list(Vals) ->
     [decode_jer(Type,Val)||Val <- Vals];
 decode_jer({choice,ChoiceTypes},ChoiceVal) ->
@@ -142,11 +160,18 @@ decode_jer({choice,ChoiceTypes},ChoiceVal) ->
         _ ->
             exit({error,{asn1,{invalid_choice,Alt,maps:keys(ChoiceTypes)}}})
     end;
-decode_jer('BIT STRING',#{<<"value">> := Str, <<"length">> := Length}) ->
+decode_jer(bit_string,#{<<"value">> := Str, <<"length">> := Length}) ->
     json2bitstring(binary_to_list(Str),Length);
-decode_jer({'BIT STRING',_Prop},#{<<"value">> := Str, <<"length">> := Length}) ->
-    % FIXME, a fixed length bitstring should be represented differently
-    json2bitstring(binary_to_list(Str),Length).
+decode_jer({bit_string,FixedLength},Str) when is_binary(Str) ->
+    json2bitstring(binary_to_list(Str),FixedLength);
+decode_jer(compact_bit_string,#{<<"value">> := Str, <<"length">> := Length}) ->
+    BitStr = json2bitstring(binary_to_list(Str),Length),
+    Unused = (8 - (Length rem 8)) band 7,
+    {Unused,<<BitStr/bitstring,0:Unused>>};
+decode_jer({compact_bit_string,FixedLength},Str) ->
+    BitStr = json2bitstring(binary_to_list(Str),FixedLength),
+    Unused = (8 - (FixedLength rem 8)) band 7,
+    {Unused,<<BitStr/bitstring,0:Unused>>}.
 
 
 decode_jer_component([{Name,Type}|CompInfos],VMap,Acc) when is_map_key(Name,VMap) ->
@@ -158,14 +183,19 @@ decode_jer_component([{_Name,_Type}|CompInfos],VMap,Acc) ->
 decode_jer_component([],_,Acc) ->
     lists:reverse(Acc).
 
-json2octetstring(Value) ->
+%% This is the default representation of octet string i.e binary
+json2octetstring2binary(Value) ->
+    list_to_binary(json2octetstring(Value,[])).
+
+%% This is the legacy_types representation of octet string i.e as a list
+json2octetstring2string(Value) ->
     json2octetstring(Value,[]).
 
 json2octetstring([A1,A2|Rest],Acc) ->
     Int = list_to_integer([A1,A2],16),
     json2octetstring(Rest,[Int|Acc]);
 json2octetstring([], Acc) ->
-    list_to_binary(lists:reverse(Acc)).
+    lists:reverse(Acc).
 
 json2bitstring(Value,Length) ->
     json2bitstring(Value,Length,[]).
@@ -179,14 +209,16 @@ json2bitstring([A1,A2|Rest],Length,Acc) ->
     json2bitstring(Rest,Length-8,[Int|Acc]).
 
 bitstring2json(BitStr) when is_binary(BitStr) ->
-    L = binary_to_list(BitStr),
+    octetstring2json(binary_to_list(BitStr));
+bitstring2json(BitStr) ->
+    Pad = 8 - bit_size(BitStr) rem 8,
+    NewStr = <<BitStr/bitstring,0:Pad>>,
+    octetstring2json(binary_to_list(NewStr)).
+
+octetstring2json(List) when is_list(List) ->
     list_to_binary([begin Num = integer_to_list(X,16), 
            if length(Num) == 1 -> "0"++Num;
               true -> Num
            end 
-     end|| X<-L]);
-bitstring2json(BitStr) ->
-    Pad = 8 - bit_size(BitStr) rem 8,
-    NewStr = <<BitStr/bitstring,0:Pad>>,
-    bitstring2json(NewStr).
+     end|| X<-List]).
 
