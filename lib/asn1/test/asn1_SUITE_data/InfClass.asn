@@ -49,6 +49,7 @@ ObjSet2 FUNCTION ::= {
 Seq ::= SEQUENCE {
   arg  FUNCTION.&ArgumentType ({ObjSet2}{@val1}),
   res  FUNCTION.&ResultType   ({ObjSet2}{@val1}),
+  b BOOLEAN,
   val1 FUNCTION.&code ({ObjSet2})
   }
 

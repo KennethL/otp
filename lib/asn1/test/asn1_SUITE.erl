@@ -221,7 +221,8 @@ end_per_testcase(_Func, Config) ->
 test(Config, TestF) ->
     test(Config, TestF, [per,
                          uper,
-                         ber]).
+                         ber,
+                        jer]).
 
 test(Config, TestF, Rules) ->
     Fun = fun(C, R, O) ->
@@ -314,7 +315,7 @@ do_test_prim(Rule, NoOkWrapper) ->
     testPrim:obj_id(Rule),
     testPrim:rel_oid(Rule),
     testPrim:null(Rule),
-    testPrim:real(Rule).
+    Rule =/= jer andalso testPrim:real(Rule). %% Temporary workaround for JER
 
 testCompactBitString(Config) -> test(Config, fun testCompactBitString/3).
 testCompactBitString(Config, Rule, Opts) ->
@@ -1025,6 +1026,8 @@ testNortel(Config, Rule, Opts) ->
     asn1_test_lib:compile("Nortel", Config, [Rule|Opts]).
 
 test_undecoded_rest(Config) -> test(Config, fun test_undecoded_rest/3).
+test_undecoded_rest(_Config,jer,_Opts) ->
+    ok; % not relevant for JER
 test_undecoded_rest(Config, Rule, Opts) ->
     do_test_undecoded_rest(Config, Rule, Opts),
     do_test_undecoded_rest(Config, Rule, [no_ok_wrapper|Opts]),

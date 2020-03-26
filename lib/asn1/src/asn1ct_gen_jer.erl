@@ -25,7 +25,6 @@
 
 -include("asn1_records.hrl").
 
--export([gen_typeinfo/2]).
 -export([gen_encode/2,gen_encode/3,gen_decode/2,gen_decode/3]).
 -export([gen_encode_prim/3]).
 -export([gen_dec_prim/2]).
@@ -139,7 +138,7 @@ gen_decode_set(_,_,_) -> ok.
 %%  Encode/decode SEQUENCE OF and SET OF
 %%===============================================================================
 
-gen_encode_sof(Erules,_Typename,_InnerTypename,D) when is_record(D,type) ->
+gen_encode_sof(Erules,Typename,InnerTypename,D) when is_record(D,type) ->
     asn1ct_name:start(),
     {_SeqOrSetOf, Cont} = D#type.def,
 
@@ -152,7 +151,8 @@ gen_encode_sof(Erules,_Typename,_InnerTypename,D) when is_record(D,type) ->
 
 %%    emit(["   EncV = 'enc_",asn1ct_gen:list2name(Typename),
 %%	  "_components'(Val",Objfun,",[]).",nl,nl]),
-    {sof,asn1ct_gen_jer:gen_typeinfo(Erules,Cont)}.
+    NameSuffix = asn1ct_gen:constructed_suffix(InnerTypename,D#type.def),
+    {sof,gen_typeinfo(Erules,[NameSuffix|Typename],Cont)}.
     
 gen_decode_sof(_,_,_,_) -> ok.
 
@@ -168,7 +168,10 @@ gen_encode_choice(Erules,TypeName,D) when is_record(D,type) ->
 		    {Rl,El} -> Rl ++ El;
 		    _ -> CompList
 		end,
-    {choice,maps:from_list(gen_enc_comptypes(Erules,TypeName,CompList1,0,0,[]))}.
+    {choice,maps:from_list(
+              [{AltName,AltType}||
+                  {AltName,AltType,_OptOrMand} <- 
+                      gen_enc_comptypes(Erules,TypeName,CompList1,0,0,[])])}.
 
 gen_decode_choice(_,_,_) -> ok.
 
@@ -182,7 +185,7 @@ gen_enc_comptypes(Erules,TopType,[#'ComponentType'{name=Cname,typespec=Type,prop
     TypeInfo = 
         gen_enc_line(Erules,TopType,Cname,Type,"Dummy",
                                     3,Prop,EncObj),
-    gen_enc_comptypes(Erules,TopType,Rest,Pos,EncObj,[{atom_to_binary(Cname,utf8),TypeInfo}|Acc]);
+    gen_enc_comptypes(Erules,TopType,Rest,Pos,EncObj,[{atom_to_binary(Cname,utf8),TypeInfo,Prop}|Acc]);
 gen_enc_comptypes(_,_,[],_,_,Acc) ->
     lists:reverse(Acc).
 
@@ -394,7 +397,7 @@ gen_encode(Erules,Typename,Type) when is_record(Type,type) ->
                   Func,"(Val",ObjFun,") ->",nl,
                   "   "]),
 	    TypeInfo = gen_encode_constructed(Erules,Typename,InnerType,Type),
-            emit([{asisp,TypeInfo},".",nl]);
+            emit([{asis,TypeInfo},".",nl]);
 	_ ->
 	    true
     end;
@@ -429,18 +432,17 @@ gen_encode_user(Erules, #typedef{}=D, _Wrapper) ->
             {primitive,bif} ->
                 gen_encode_prim(jer,Type,"Val");
             #'Externaltypereference'{module=CurrentMod,type=Etype} ->
-                typeinfo_func(Etype);
+                {typeinfo,{CurrentMod,typeinfo_func(Etype)}};
             #'Externaltypereference'{module=Emod,type=Etype} ->
-                {Emod,typeinfo_func(Etype)};
+                {typeinfo,{Emod,typeinfo_func(Etype)}};
             'ASN1_OPEN_TYPE' ->	    
                 gen_encode_prim(jer,
                                 Type#type{def='ASN1_OPEN_TYPE'},
                                 "Val")
         end,
-    emit([{asisp,TypeInfo},".",nl,nl]).
+    emit([{asis,TypeInfo},".",nl,nl]).
 
-gen_typeinfo(Erules, Type) ->
-    Typename = "notypename",
+gen_typeinfo(Erules, Typename, Type) ->
     InnerType = asn1ct_gen:get_inner(Type#type.def),
     CurrentMod = get(currmod),
     case asn1ct_gen:type(InnerType) of
@@ -459,7 +461,9 @@ gen_typeinfo(Erules, Type) ->
     end.
 
 gen_encode_prim(_Erules, #type{}=D, _Value) ->
-    BitStringConstraint = get_size_constraint(D#type.constraint),
+    BitStringConstraint = get_size_constraint(D#type.constraint),    
+    IntConstr = int_constr(D#type.constraint),
+
     %% MaxBitStrSize = case BitStringConstraint of
     %%     		[] -> none;
     %%     		{_,'MAX'} -> none;
@@ -482,10 +486,20 @@ gen_encode_prim(_Erules, #type{}=D, _Value) ->
 	       'IA5String'       -> string;
 	       'UTCTime'         -> string;
 	       'GeneralizedTime' -> string;
-               {'BIT STRING',_NNL} -> maybe_legacy_bit_string(BitStringConstraint);
+               B1 = 'BIT STRING' -> maybe_legacy_bit_string(B1,BitStringConstraint);
+               B2 = {'BIT STRING',_NNL} -> 
+                   maybe_legacy_bit_string(B2,BitStringConstraint);
+               {'INTEGER',NNL} -> {'INTEGER_NNL',NNL};
+               {'ENUMERATED',{NNL,Ext}} -> {'ENUMERATED',maps:from_list(NNL++Ext)};
+               {'ENUMERATED',NNL} -> {'ENUMERATED',maps:from_list(NNL)};
 	       Other             -> Other
 	   end,
-    Type.
+    case IntConstr of
+        [] -> % No constraint
+            Type;
+        _ ->
+            {Type,IntConstr}
+    end.
 
 maybe_legacy_octet_string() ->
     case asn1ct:use_legacy_types() of
@@ -495,7 +509,7 @@ maybe_legacy_octet_string() ->
             octet_string
     end.
 
-maybe_legacy_bit_string(SizeConstraint) ->
+maybe_legacy_bit_string(BitStrType,SizeConstraint) ->
     Type = case asn1ct:get_bit_string_format() of
                bitstring ->
                    bit_string;
@@ -504,11 +518,17 @@ maybe_legacy_bit_string(SizeConstraint) ->
                legacy ->
                    legacy_bit_string
            end,
+    Type1 = case BitStrType of
+                {'BIT STRING',[]} -> 
+                    Type;
+                {'BIT STRING',NNL} -> 
+                    {list_to_atom(lists:concat([Type,"_nnl"])),NNL}
+            end,
     case SizeConstraint of
         S when is_integer(S) ->
-            {Type,S};
+            {Type1,S};
         _ ->
-            Type
+            Type1
     end.
 %%===========================================================================
 %% Generate DECODING
